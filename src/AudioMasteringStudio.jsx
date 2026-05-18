@@ -185,6 +185,58 @@ export default function App() {
       }
   };
 
+  // --- PUENTE DE COMUNICACIÓN (RECEPCIÓN DESDE RAILWAY) ---
+  useEffect(() => {
+    const recibirAudioExterno = async (event) => {
+        // Validación de seguridad: Solo atajamos mensajes que digan 'ENVIAR_AUDIO'
+        if (event.data && event.data.accion === 'ENVIAR_AUDIO') {
+            if (!audioContext) return;
+            setIsProcessing(true);
+            pushToHistory();
+
+            try {
+                const { arrayBuffer, tipo, nombre } = event.data;
+                const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                setTracks(prevTracks => {
+                    let targetTrack = prevTracks.find(t => t.type === tipo);
+                    let updatedTracks = [...prevTracks];
+
+                    // Si no existe la pista (ej. pista de voz), la crea sola
+                    if (!targetTrack) {
+                        const typeCount = prevTracks.filter(t => t.type === tipo).length + 1;
+                        const trackName = tipo === 'voice' ? `Voz ${typeCount}` : (tipo === 'music' ? `Música ${typeCount}` : `SFX ${typeCount}`);
+                        targetTrack = { id: crypto.randomUUID(), name: trackName, volume: 1.0, pan: 0, muted: false, solo: false, type: tipo, color: COLORS[tipo], hasBeenUsed: false };
+                        updatedTracks.push(targetTrack);
+                    }
+
+                    // Inserta el clip de audio en la línea de tiempo
+                    setClips(prevClips => {
+                        const newStartTime = prevClips.filter(c => c.trackId === targetTrack.id).reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
+                        const newClip = {
+                            id: crypto.randomUUID(), trackId: targetTrack.id, buffer: decodedBuffer,
+                            startTime: newStartTime, offset: 0, duration: decodedBuffer.duration, fadeIn: 0, fadeOut: 0,
+                            name: nombre || "Audio Importado", volume: 1.0, fx: getDefaultFx(tipo), automation: []
+                        };
+                        setSelectedClipIds([newClip.id]);
+                        return [...prevClips, newClip];
+                    });
+
+                    return updatedTracks;
+                });
+            } catch (error) {
+                console.error("Error recibiendo audio del puente:", error);
+            } finally {
+                setIsProcessing(false);
+            }
+        }
+    };
+
+    window.addEventListener('message', recibirAudioExterno);
+    return () => window.removeEventListener('message', recibirAudioExterno);
+  }, [audioContext, tracks]);
+
+  
   useEffect(() => {
     const initCtx = async () => {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
