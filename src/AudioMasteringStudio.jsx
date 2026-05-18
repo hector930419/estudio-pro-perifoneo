@@ -724,109 +724,6 @@ export default function App() {
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [dragState, isScrubbing, marquee, globalDuration, zoom, tracks, clips, isAutomationMode]);
 
-  // --- LÓGICA DE MATAR SILENCIOS (MAGNETIC RIPPLE DELETE) ---
-  const handleRemoveSilence = () => {
-    if (selectedClipIds.length === 0) return;
-    pushToHistory(); stopAudio(); setIsProcessing(true);
-
-    setTimeout(() => {
-        let newClipsArray = [...clips]; 
-        let newSelectionIds = [];
-
-        // Agrupamos los clips seleccionados por pista
-        const trackIds = [...new Set(selectedClipIds.map(id => clips.find(c => c.id === id)?.trackId).filter(Boolean))];
-
-        trackIds.forEach(trackId => {
-            let trackClips = newClipsArray.filter(c => c.trackId === trackId).sort((a,b) => a.startTime - b.startTime);
-            let processedTrackClips = [];
-            
-            let shiftDelta = 0;
-            let isMagnetActive = false;
-            let magnetHead = 0;
-
-            trackClips.forEach(clip => {
-                if (selectedClipIds.includes(clip.id)) {
-                    const buffer = clip.buffer; const channelData = buffer.getChannelData(0); const sampleRate = buffer.sampleRate;
-                    const startSampleObj = Math.floor(clip.offset * sampleRate);
-                    const endSampleObj = Math.floor((clip.offset + clip.duration) * sampleRate);
-
-                    let maxPeak = 0;
-                    for (let p = startSampleObj; p < endSampleObj; p += 10) if (Math.abs(channelData[p]) > maxPeak) maxPeak = Math.abs(channelData[p]);
-                    
-                    const threshold = Math.max(0.015, maxPeak * 0.08);
-                    const minSilenceSamples = sampleRate * 0.12; 
-                    const paddingSamples = sampleRate * 0.015; 
-                    const chunkSize = Math.floor(sampleRate * 0.005); 
-
-                    let segments = []; let currentSegment = null; let silenceCounter = 0;
-
-                    for (let i = startSampleObj; i < endSampleObj; i += chunkSize) {
-                        let max = 0;
-                        for (let j = 0; j < chunkSize && i + j < endSampleObj; j++) {
-                            if (Math.abs(channelData[i + j]) > max) max = Math.abs(channelData[i + j]);
-                        }
-                        
-                        if (max > threshold) {
-                            if (!currentSegment) currentSegment = { start: Math.max(startSampleObj, i - paddingSamples), end: 0 };
-                            silenceCounter = 0; currentSegment.end = Math.min(endSampleObj, i + chunkSize + paddingSamples);
-                        } else {
-                            if (currentSegment) {
-                                silenceCounter += chunkSize;
-                                if (silenceCounter >= minSilenceSamples) { segments.push(currentSegment); currentSegment = null; silenceCounter = 0; }
-                            }
-                        }
-                    }
-                    if (currentSegment) segments.push(currentSegment);
-
-                    if (segments.length > 0) {
-                        if (!isMagnetActive) {
-                            magnetHead = clip.startTime;
-                            isMagnetActive = true;
-                        }
-
-                        segments.forEach((seg, idx) => {
-                            const newOffset = seg.start / sampleRate;
-                            const newDuration = (seg.end - seg.start) / sampleRate;
-                            if (newDuration <= 0) return;
-
-                            const newClipId = crypto.randomUUID();
-                            processedTrackClips.push({
-                                ...clip, id: newClipId, startTime: magnetHead, offset: newOffset, duration: newDuration,
-                                fadeIn: 0.01, fadeOut: 0.01,
-                                name: `${clip.name} (T${idx+1})`, fx: JSON.parse(JSON.stringify(clip.fx)), automation: []
-                            });
-                            newSelectionIds.push(newClipId);
-                            // EL SECRETO DEL IMÁN: Actualizamos el cabezal directamente sin sumar milisegundos de espacio
-                            magnetHead += newDuration; 
-                        });
-                        
-                        const originalEndTime = clip.startTime + clip.duration;
-                        shiftDelta = originalEndTime - magnetHead;
-                    } else {
-                        const originalEndTime = clip.startTime + clip.duration;
-                        if (!isMagnetActive) shiftDelta = originalEndTime - clip.startTime;
-                        else shiftDelta = originalEndTime - magnetHead;
-                    }
-                } else {
-                    if (isMagnetActive) {
-                        let newStartTime = clip.startTime - shiftDelta;
-                        if (newStartTime < magnetHead) newStartTime = magnetHead; // Prevenir traslapes
-                        processedTrackClips.push({ ...clip, startTime: newStartTime });
-                        magnetHead = newStartTime + clip.duration;
-                        shiftDelta = (clip.startTime + clip.duration) - magnetHead;
-                    } else {
-                        processedTrackClips.push(clip);
-                    }
-                }
-            });
-
-            newClipsArray = newClipsArray.filter(c => c.trackId !== trackId).concat(processedTrackClips);
-        });
-
-        setClips(newClipsArray); setSelectedClipIds(newSelectionIds); setIsProcessing(false);
-    }, 10);
-  };
-
   const buildClipDSP = (audioCtx, clip, trackGain, ctxStart, playStart, trackType) => {
      const clipGain = audioCtx.createGain(); 
      
@@ -1140,6 +1037,107 @@ export default function App() {
     setIsProcessing(false);
   };
 
+  const handleRemoveSilence = () => {
+    if (selectedClipIds.length === 0) return;
+    pushToHistory(); stopAudio(); setIsProcessing(true);
+
+    setTimeout(() => {
+        let newClipsArray = [...clips]; 
+        let newSelectionIds = [];
+
+        // Agrupamos los clips seleccionados por pista
+        const trackIds = [...new Set(selectedClipIds.map(id => clips.find(c => c.id === id)?.trackId).filter(Boolean))];
+
+        trackIds.forEach(trackId => {
+            let trackClips = newClipsArray.filter(c => c.trackId === trackId).sort((a,b) => a.startTime - b.startTime);
+            let processedTrackClips = [];
+            
+            let shiftDelta = 0;
+            let isMagnetActive = false;
+            let magnetHead = 0;
+
+            trackClips.forEach(clip => {
+                if (selectedClipIds.includes(clip.id)) {
+                    const buffer = clip.buffer; const channelData = buffer.getChannelData(0); const sampleRate = buffer.sampleRate;
+                    const startSampleObj = Math.floor(clip.offset * sampleRate);
+                    const endSampleObj = Math.floor((clip.offset + clip.duration) * sampleRate);
+
+                    let maxPeak = 0;
+                    for (let p = startSampleObj; p < endSampleObj; p += 10) if (Math.abs(channelData[p]) > maxPeak) maxPeak = Math.abs(channelData[p]);
+                    
+                    const threshold = Math.max(0.015, maxPeak * 0.08);
+                    const minSilenceSamples = sampleRate * 0.12; 
+                    const paddingSamples = sampleRate * 0.015; 
+                    const chunkSize = Math.floor(sampleRate * 0.005); 
+
+                    let segments = []; let currentSegment = null; let silenceCounter = 0;
+
+                    for (let i = startSampleObj; i < endSampleObj; i += chunkSize) {
+                        let max = 0;
+                        for (let j = 0; j < chunkSize && i + j < endSampleObj; j++) {
+                            if (Math.abs(channelData[i + j]) > max) max = Math.abs(channelData[i + j]);
+                        }
+                        
+                        if (max > threshold) {
+                            if (!currentSegment) currentSegment = { start: Math.max(startSampleObj, i - paddingSamples), end: 0 };
+                            silenceCounter = 0; currentSegment.end = Math.min(endSampleObj, i + chunkSize + paddingSamples);
+                        } else {
+                            if (currentSegment) {
+                                silenceCounter += chunkSize;
+                                if (silenceCounter >= minSilenceSamples) { segments.push(currentSegment); currentSegment = null; silenceCounter = 0; }
+                            }
+                        }
+                    }
+                    if (currentSegment) segments.push(currentSegment);
+
+                    if (segments.length > 0) {
+                        if (!isMagnetActive) {
+                            magnetHead = clip.startTime;
+                            isMagnetActive = true;
+                        }
+
+                        segments.forEach((seg, idx) => {
+                            const newOffset = seg.start / sampleRate;
+                            const newDuration = (seg.end - seg.start) / sampleRate;
+                            if (newDuration <= 0) return;
+
+                            const newClipId = crypto.randomUUID();
+                            processedTrackClips.push({
+                                ...clip, id: newClipId, startTime: magnetHead, offset: newOffset, duration: newDuration,
+                                fadeIn: 0.01, fadeOut: 0.01,
+                                name: `${clip.name} (T${idx+1})`, fx: JSON.parse(JSON.stringify(clip.fx)), automation: []
+                            });
+                            newSelectionIds.push(newClipId);
+                            magnetHead += newDuration; 
+                        });
+                        
+                        const originalEndTime = clip.startTime + clip.duration;
+                        shiftDelta = originalEndTime - magnetHead;
+                    } else {
+                        const originalEndTime = clip.startTime + clip.duration;
+                        if (!isMagnetActive) shiftDelta = originalEndTime - clip.startTime;
+                        else shiftDelta = originalEndTime - magnetHead;
+                    }
+                } else {
+                    if (isMagnetActive) {
+                        let newStartTime = clip.startTime - shiftDelta;
+                        if (newStartTime < magnetHead) newStartTime = magnetHead; 
+                        processedTrackClips.push({ ...clip, startTime: newStartTime });
+                        magnetHead = newStartTime + clip.duration;
+                        shiftDelta = (clip.startTime + clip.duration) - magnetHead;
+                    } else {
+                        processedTrackClips.push(clip);
+                    }
+                }
+            });
+
+            newClipsArray = newClipsArray.filter(c => c.trackId !== trackId).concat(processedTrackClips);
+        });
+
+        setClips(newClipsArray); setSelectedClipIds(newSelectionIds); setIsProcessing(false);
+    }, 10);
+  };
+
   const applyGlobalStyle = (styleName) => {
       setActiveGlobalStyle(styleName);
       pushToHistory();
@@ -1203,7 +1201,7 @@ export default function App() {
   const activeFx = primaryClip ? primaryClip.fx : null;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans p-4 sm:p-6 selection:bg-emerald-500 selection:text-white flex flex-col gap-6 relative">
+    <div className="h-screen overflow-y-auto overflow-x-hidden w-full bg-zinc-950 text-zinc-200 font-sans p-4 sm:p-6 selection:bg-emerald-500 selection:text-white flex flex-col gap-6 relative custom-scrollbar">
       
       {/* --- HEADER ORIGINAL Y BOTONES --- */}
       <header className="flex flex-col md:flex-row justify-between items-center border-b border-zinc-800 pb-4 gap-4">
@@ -1280,7 +1278,7 @@ export default function App() {
       )}
 
       {/* Editor Principal */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl flex flex-col relative overflow-hidden flex-1 max-h-[60vh]">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl flex flex-col relative overflow-hidden flex-1 max-h-[60vh] shrink-0 min-h-[400px]">
         <div className="flex flex-wrap justify-between items-center p-3 border-b border-zinc-800 bg-zinc-950 gap-4">
             <div className="flex gap-2 items-center">
               <button onClick={handleCopy} disabled={selectedClipIds.length === 0} className="btn-tool text-cyan-400" title="Copiar (Ctrl+C)"><Copy className="w-4 h-4" /></button>
@@ -1332,7 +1330,7 @@ export default function App() {
         </div>
 
         {/* --- CONTENEDOR CENTRAL DE SCROLL SINCRONIZADO --- */}
-        <div ref={scrollContainerRef} className="flex flex-1 bg-[#09090b] overflow-auto relative custom-scrollbar">
+        <div ref={scrollContainerRef} className="flex flex-1 bg-[#09090b] overflow-auto relative custom-scrollbar min-h-0">
             
             {/* Panel Izquierdo: Pistas (Fijo en Scroll Horizontal) */}
             <div className="w-48 shrink-0 bg-zinc-950 border-r border-zinc-800 flex flex-col z-40 sticky left-0 shadow-[5px_0_15px_rgba(0,0,0,0.5)]">
@@ -1395,7 +1393,7 @@ export default function App() {
                   </div>
                )}
 
-               <div className="flex-1 shrink-0 p-3 flex flex-col gap-2 justify-end bg-zinc-900/30 border-t border-zinc-800/50 mt-2 pb-6">
+               <div className="flex-1 shrink-0 p-3 flex flex-col gap-2 justify-end bg-zinc-900/30 border-t border-zinc-800/50 mt-2 pb-6 min-h-[120px]">
                  <button onClick={() => addEmptyTrack('voice')} className="flex items-center justify-center gap-1 bg-emerald-900/20 border border-emerald-500/30 hover:bg-emerald-800/40 text-emerald-400 py-2 rounded text-[10px] uppercase font-bold transition-all"><Plus className="w-3 h-3"/> + Pista de Voz</button>
                  <button onClick={() => addEmptyTrack('music')} className="flex items-center justify-center gap-1 bg-sky-900/20 border border-sky-500/30 hover:bg-sky-800/40 text-sky-400 py-2 rounded text-[10px] uppercase font-bold transition-all"><Plus className="w-3 h-3"/> + Pista de Música</button>
                  <button onClick={() => addEmptyTrack('sfx')} className="flex items-center justify-center gap-1 bg-amber-900/20 border border-amber-500/30 hover:bg-amber-800/40 text-amber-400 py-2 rounded text-[10px] uppercase font-bold transition-all"><Plus className="w-3 h-3"/> + Pista de SFX</button>
@@ -1403,7 +1401,7 @@ export default function App() {
             </div>
 
             {/* Panel Derecho: Línea de Tiempo */}
-            <div className="flex-1 relative timeline-bg select-none" onMouseDown={handleTimelineMouseDown} onTouchStart={handleTimelineMouseDown}>
+            <div className="flex-1 relative timeline-bg select-none min-h-max" onMouseDown={handleTimelineMouseDown} onTouchStart={handleTimelineMouseDown}>
                <div ref={innerContainerRef} className="relative min-h-full" style={{ width: `${timelineWidthPx}px` }}>
                   
                   <div className="time-ruler h-6 border-b border-zinc-800 bg-zinc-900/80 sticky top-0 z-30 flex items-center overflow-hidden cursor-ew-resize">
@@ -1513,7 +1511,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative shrink-0">
           <div className="lg:col-span-4 flex flex-col gap-6">
              <div className="flex items-center justify-center gap-6 bg-zinc-900 p-6 rounded-xl border border-zinc-800 shadow-xl relative z-40">
                  <button onClick={stopAudio} disabled={tracks.length === 0} className="p-3 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-all disabled:opacity-30">
