@@ -185,12 +185,12 @@ export default function App() {
       }
   };
 
- // --- PUENTE DE COMUNICACIÓN (RECEPCIÓN DESDE RAILWAY) ---
+// --- PUENTE DE COMUNICACIÓN (RECEPCIÓN DESDE RAILWAY) ---
   useEffect(() => {
     const recibirAudioExterno = async (event) => {
-        if (event.data && event.data.accion === 'ENVIAR_AUDIO') {
+        // Ahora acepta la nueva orden 'ENVIAR_AUDIO_TIEMPO'
+        if (event.data && (event.data.accion === 'ENVIAR_AUDIO' || event.data.accion === 'ENVIAR_AUDIO_TIEMPO')) {
             
-            // 1. EL TRUCO: Despertar el motor de audio a la fuerza si estaba dormido
             let contextoActual = audioContext;
             if (!contextoActual) {
                 contextoActual = new (window.AudioContext || window.webkitAudioContext)();
@@ -201,14 +201,13 @@ export default function App() {
             pushToHistory();
 
             try {
-                const { arrayBuffer, tipo, nombre } = event.data;
+                const { arrayBuffer, tipo, nombre, startTime } = event.data;
                 const decodedBuffer = await contextoActual.decodeAudioData(arrayBuffer);
 
                 setTracks(prevTracks => {
                     let targetTrack = prevTracks.find(t => t.type === tipo);
                     let updatedTracks = [...prevTracks];
 
-                    // Si no existe la pista (ej. pista de voz), la crea sola
                     if (!targetTrack) {
                         const typeCount = prevTracks.filter(t => t.type === tipo).length + 1;
                         const trackName = tipo === 'voice' ? `Voz ${typeCount}` : (tipo === 'music' ? `Música ${typeCount}` : `SFX ${typeCount}`);
@@ -216,12 +215,18 @@ export default function App() {
                         updatedTracks.push(targetTrack);
                     }
 
-                    // Inserta el clip de audio en la línea de tiempo
                     setClips(prevClips => {
-                        const newStartTime = prevClips.filter(c => c.trackId === targetTrack.id).reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
+                        // LA MAGIA: Si Railway manda un segundo exacto, lo ubica ahí. Si no, al final.
+                        let exactStartTime = 0;
+                        if (startTime !== undefined) {
+                            exactStartTime = startTime;
+                        } else {
+                            exactStartTime = prevClips.filter(c => c.trackId === targetTrack.id).reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
+                        }
+
                         const newClip = {
                             id: crypto.randomUUID(), trackId: targetTrack.id, buffer: decodedBuffer,
-                            startTime: newStartTime, offset: 0, duration: decodedBuffer.duration, fadeIn: 0, fadeOut: 0,
+                            startTime: exactStartTime, offset: 0, duration: decodedBuffer.duration, fadeIn: 0.1, fadeOut: tipo === 'music' ? 2.5 : 0.1,
                             name: nombre || "Audio Importado", volume: 1.0, fx: getDefaultFx(tipo), automation: []
                         };
                         setSelectedClipIds([newClip.id]);
