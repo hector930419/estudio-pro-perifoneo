@@ -185,18 +185,24 @@ export default function App() {
       }
   };
 
-  // --- PUENTE DE COMUNICACIÓN (RECEPCIÓN DESDE RAILWAY) ---
+ // --- PUENTE DE COMUNICACIÓN (RECEPCIÓN DESDE RAILWAY) ---
   useEffect(() => {
     const recibirAudioExterno = async (event) => {
-        // Validación de seguridad: Solo atajamos mensajes que digan 'ENVIAR_AUDIO'
         if (event.data && event.data.accion === 'ENVIAR_AUDIO') {
-            if (!audioContext) return;
+            
+            // 1. EL TRUCO: Despertar el motor de audio a la fuerza si estaba dormido
+            let contextoActual = audioContext;
+            if (!contextoActual) {
+                contextoActual = new (window.AudioContext || window.webkitAudioContext)();
+                setAudioContext(contextoActual);
+            }
+
             setIsProcessing(true);
             pushToHistory();
 
             try {
                 const { arrayBuffer, tipo, nombre } = event.data;
-                const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                const decodedBuffer = await contextoActual.decodeAudioData(arrayBuffer);
 
                 setTracks(prevTracks => {
                     let targetTrack = prevTracks.find(t => t.type === tipo);
@@ -235,7 +241,7 @@ export default function App() {
     window.addEventListener('message', recibirAudioExterno);
     return () => window.removeEventListener('message', recibirAudioExterno);
   }, [audioContext, tracks]);
-
+  
   
   useEffect(() => {
     const initCtx = async () => {
