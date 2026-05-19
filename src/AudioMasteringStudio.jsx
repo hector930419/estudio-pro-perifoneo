@@ -188,11 +188,11 @@ export default function App() {
   };
 
 // --- PUENTE DE COMUNICACIÓN (RECEPCIÓN DESDE RAILWAY) ---
+// --- PUENTE DE COMUNICACIÓN (RECEPCIÓN DESDE RAILWAY) ---
   useEffect(() => {
     const recibirAudioExterno = async (event) => {
         if (event.data && (event.data.accion === 'ENVIAR_AUDIO' || event.data.accion === 'ENVIAR_AUDIO_TIEMPO')) {
             
-            // 🛡️ EL ESCUDO ANTI-CLONES: Si ya recibimos este ID exacto, lo matamos.
             if (event.data.msgId) {
                 if (mensajesProcesados.has(event.data.msgId)) return;
                 mensajesProcesados.add(event.data.msgId);
@@ -208,7 +208,8 @@ export default function App() {
             pushToHistory();
 
             try {
-                const { arrayBuffer, tipo, nombre, startTime, duration, fadeOut, volume } = event.data;
+                // ⬅️ Extraemos "fx" del paquete de datos
+                const { arrayBuffer, tipo, nombre, startTime, duration, fadeOut, volume, fx } = event.data;
                 const decodedBuffer = await contextoActual.decodeAudioData(arrayBuffer);
 
                 setTracks(prevTracks => {
@@ -234,10 +235,13 @@ export default function App() {
                         const clipVolume = volume !== undefined ? volume : 1.0;
                         const clipFadeOut = fadeOut !== undefined ? fadeOut : (tipo === 'music' ? 2.5 : 0.1);
 
+                        // 🎛️ Aplicamos los efectos personalizados (fx) si vienen, si no, usamos los de defecto
                         const newClip = {
                             id: crypto.randomUUID(), trackId: targetTrack.id, buffer: decodedBuffer,
                             startTime: exactStartTime, offset: 0, duration: clipDuration, fadeIn: 0.1, fadeOut: clipFadeOut,
-                            name: nombre || "Audio Importado", volume: clipVolume, fx: getDefaultFx(tipo), automation: []
+                            name: nombre || "Audio Importado", volume: clipVolume, 
+                            fx: fx ? fx : getDefaultFx(tipo), 
+                            automation: []
                         };
                         setSelectedClipIds([newClip.id]);
                         return [...prevClips, newClip];
@@ -255,7 +259,7 @@ export default function App() {
 
     window.addEventListener('message', recibirAudioExterno);
     return () => window.removeEventListener('message', recibirAudioExterno);
-  }, [audioContext]); // <-- ⚠️ MUY IMPORTANTE: Se quitó 'tracks' de aquí
+  }, [audioContext]);
   
   
   useEffect(() => {
