@@ -188,7 +188,6 @@ export default function App() {
 // --- PUENTE DE COMUNICACIÓN (RECEPCIÓN DESDE RAILWAY) ---
   useEffect(() => {
     const recibirAudioExterno = async (event) => {
-        // Ahora acepta la nueva orden 'ENVIAR_AUDIO_TIEMPO'
         if (event.data && (event.data.accion === 'ENVIAR_AUDIO' || event.data.accion === 'ENVIAR_AUDIO_TIEMPO')) {
             
             let contextoActual = audioContext;
@@ -201,7 +200,8 @@ export default function App() {
             pushToHistory();
 
             try {
-                const { arrayBuffer, tipo, nombre, startTime } = event.data;
+                // Extraemos los nuevos parámetros de recorte y volumen que enviará Railway
+                const { arrayBuffer, tipo, nombre, startTime, duration, fadeOut, volume } = event.data;
                 const decodedBuffer = await contextoActual.decodeAudioData(arrayBuffer);
 
                 setTracks(prevTracks => {
@@ -216,7 +216,6 @@ export default function App() {
                     }
 
                     setClips(prevClips => {
-                        // LA MAGIA: Si Railway manda un segundo exacto, lo ubica ahí. Si no, al final.
                         let exactStartTime = 0;
                         if (startTime !== undefined) {
                             exactStartTime = startTime;
@@ -224,10 +223,15 @@ export default function App() {
                             exactStartTime = prevClips.filter(c => c.trackId === targetTrack.id).reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
                         }
 
+                        // Aplicamos los cortes y desvanecimientos exactos si vienen en el paquete
+                        const clipDuration = duration ? Math.min(duration, decodedBuffer.duration) : decodedBuffer.duration;
+                        const clipVolume = volume !== undefined ? volume : 1.0;
+                        const clipFadeOut = fadeOut !== undefined ? fadeOut : (tipo === 'music' ? 2.5 : 0.1);
+
                         const newClip = {
                             id: crypto.randomUUID(), trackId: targetTrack.id, buffer: decodedBuffer,
-                            startTime: exactStartTime, offset: 0, duration: decodedBuffer.duration, fadeIn: 0.1, fadeOut: tipo === 'music' ? 2.5 : 0.1,
-                            name: nombre || "Audio Importado", volume: 1.0, fx: getDefaultFx(tipo), automation: []
+                            startTime: exactStartTime, offset: 0, duration: clipDuration, fadeIn: 0.1, fadeOut: clipFadeOut,
+                            name: nombre || "Audio Importado", volume: clipVolume, fx: getDefaultFx(tipo), automation: []
                         };
                         setSelectedClipIds([newClip.id]);
                         return [...prevClips, newClip];
