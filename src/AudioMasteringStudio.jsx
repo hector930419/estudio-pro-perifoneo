@@ -135,6 +135,81 @@ export default function App() {
   const [masterGain, setMasterGain] = useState(1);
   const [limiterEnabled, setLimiterEnabled] = useState(true);
 
+  // =================================================================
+  // 📚 CEREBRO DE LA BIBLIOTECA VIP (CONEXIÓN A PUBLITOCANCIPA)
+  // =================================================================
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [libraryTracks, setLibraryTracks] = useState([]);
+  const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
+
+  const toggleLibrary = async () => {
+      setIsLibraryOpen(!isLibraryOpen);
+      if (libraryTracks.length === 0 && !isLibraryOpen) {
+          setIsLoadingLibrary(true);
+          try {
+              const res = await fetch('https://publitocancipa.com/api/listar_pistas');
+              if (!res.ok) throw new Error("Error de red");
+              const pistas = await res.json();
+              setLibraryTracks(pistas);
+          } catch (error) {
+              console.error("Error cargando biblioteca VIP:", error);
+          } finally {
+              setIsLoadingLibrary(false);
+          }
+      }
+  };
+
+  const loadTrackFromLibrary = async (filename) => {
+      setIsLibraryOpen(false); 
+      setIsProcessing(true); 
+      pushToHistory?.(); // Guardamos en el historial si la función existe
+      
+      try {
+          let contextoActual = audioContext;
+          if (!contextoActual) {
+              contextoActual = new (window.AudioContext || window.webkitAudioContext)();
+              setAudioContext(contextoActual);
+          }
+
+          const res = await fetch(`https://publitocancipa.com/api/pista_preview/${filename}`);
+          const arrayBuffer = await res.arrayBuffer();
+          const decodedBuffer = await contextoActual.decodeAudioData(arrayBuffer);
+
+          setTracks(prevTracks => {
+              let targetTrack = prevTracks.find(t => t.type === 'music');
+              let updatedTracks = [...prevTracks];
+
+              if (!targetTrack) {
+                  const typeCount = prevTracks.filter(t => t.type === 'music').length + 1;
+                  targetTrack = { id: crypto.randomUUID(), name: `Música ${typeCount}`, volume: 1.0, pan: 0, muted: false, solo: false, type: 'music', color: COLORS['music'], hasBeenUsed: false };
+                  updatedTracks.push(targetTrack);
+              }
+
+              setClips(prevClips => {
+                  const exactStartTime = prevClips.filter(c => c.trackId === targetTrack.id).reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
+                  
+                  const newClip = {
+                      id: crypto.randomUUID(), trackId: targetTrack.id, buffer: decodedBuffer,
+                      startTime: exactStartTime, offset: 0, duration: decodedBuffer.duration, fadeIn: 0.1, fadeOut: 2.5,
+                      name: filename.replace('.mp3', '').toUpperCase(), volume: 1.0, fx: getDefaultFx('music'), automation: []
+                  };
+                  setSelectedClipIds([newClip.id]);
+                  return [...prevClips, newClip];
+              });
+
+              return updatedTracks;
+          });
+      } catch (error) {
+          console.error("Error cargando la pista VIP:", error);
+          alert("Hubo un error descargando la pista desde el servidor.");
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  
+  
+
   // REFERENCIAS DIRECTAS AL DOM (Para rendimiento pro)
   const playheadRef = useRef(null);
   const timeDisplayRef = useRef(null);
