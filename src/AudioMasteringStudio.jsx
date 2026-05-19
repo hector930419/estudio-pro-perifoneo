@@ -136,7 +136,7 @@ export default function App() {
   const [limiterEnabled, setLimiterEnabled] = useState(true);
 
   // =================================================================
-  // 📚 CEREBRO DE LA BIBLIOTECA VIP (CONEXIÓN A PUBLITOCANCIPA)
+  // 📚 CEREBRO DE LA BIBLIOTECA VIP (VERSIÓN BLINDADA Y SEGURA)
   // =================================================================
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [libraryTracks, setLibraryTracks] = useState([]);
@@ -162,7 +162,6 @@ export default function App() {
   const loadTrackFromLibrary = async (filename) => {
       setIsLibraryOpen(false); 
       setIsProcessing(true); 
-      pushToHistory?.(); // Guardamos en el historial si la función existe
       
       try {
           let contextoActual = audioContext;
@@ -181,7 +180,8 @@ export default function App() {
 
               if (!targetTrack) {
                   const typeCount = prevTracks.filter(t => t.type === 'music').length + 1;
-                  targetTrack = { id: crypto.randomUUID(), name: `Música ${typeCount}`, volume: 1.0, pan: 0, muted: false, solo: false, type: 'music', color: COLORS['music'], hasBeenUsed: false };
+                  // Color y valores directos para evitar errores de compilación
+                  targetTrack = { id: crypto.randomUUID(), name: `Música ${typeCount}`, volume: 1.0, pan: 0, muted: false, solo: false, type: 'music', color: '#0EA5E9', hasBeenUsed: false };
                   updatedTracks.push(targetTrack);
               }
 
@@ -191,7 +191,9 @@ export default function App() {
                   const newClip = {
                       id: crypto.randomUUID(), trackId: targetTrack.id, buffer: decodedBuffer,
                       startTime: exactStartTime, offset: 0, duration: decodedBuffer.duration, fadeIn: 0.1, fadeOut: 2.5,
-                      name: filename.replace('.mp3', '').toUpperCase(), volume: 1.0, fx: getDefaultFx('music'), automation: []
+                      name: filename.replace('.mp3', '').toUpperCase(), volume: 1.0, 
+                      fx: { soundgoodizer: 0, eq: { sub: 0, low: 0, mid: 0, highMid: 0, high: 0 }, compresion: 0, ecoReverb: 0, deEsser: 0, chorus: 0, flanger: 0, useWorklet: false }, 
+                      automation: []
                   };
                   setSelectedClipIds([newClip.id]);
                   return [...prevClips, newClip];
@@ -206,7 +208,6 @@ export default function App() {
           setIsProcessing(false);
       }
   };
-
   
   
 
