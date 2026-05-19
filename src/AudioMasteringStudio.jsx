@@ -6,6 +6,8 @@ import {
   Copy, ClipboardPaste, Wand2, Activity, GripVertical, FileAudio
 } from 'lucide-react';
 
+const mensajesProcesados = new Set();
+
 // --- UTILIDADES DSP Y EXPORTACIÓN ---
 const audioBufferToWav = (buffer) => {
   const numChannels = buffer.numberOfChannels; const sampleRate = buffer.sampleRate;
@@ -190,6 +192,12 @@ export default function App() {
     const recibirAudioExterno = async (event) => {
         if (event.data && (event.data.accion === 'ENVIAR_AUDIO' || event.data.accion === 'ENVIAR_AUDIO_TIEMPO')) {
             
+            // 🛡️ EL ESCUDO ANTI-CLONES: Si ya recibimos este ID exacto, lo matamos.
+            if (event.data.msgId) {
+                if (mensajesProcesados.has(event.data.msgId)) return;
+                mensajesProcesados.add(event.data.msgId);
+            }
+
             let contextoActual = audioContext;
             if (!contextoActual) {
                 contextoActual = new (window.AudioContext || window.webkitAudioContext)();
@@ -200,7 +208,6 @@ export default function App() {
             pushToHistory();
 
             try {
-                // Extraemos los nuevos parámetros de recorte y volumen que enviará Railway
                 const { arrayBuffer, tipo, nombre, startTime, duration, fadeOut, volume } = event.data;
                 const decodedBuffer = await contextoActual.decodeAudioData(arrayBuffer);
 
@@ -223,7 +230,6 @@ export default function App() {
                             exactStartTime = prevClips.filter(c => c.trackId === targetTrack.id).reduce((max, c) => Math.max(max, c.startTime + c.duration), 0);
                         }
 
-                        // Aplicamos los cortes y desvanecimientos exactos si vienen en el paquete
                         const clipDuration = duration ? Math.min(duration, decodedBuffer.duration) : decodedBuffer.duration;
                         const clipVolume = volume !== undefined ? volume : 1.0;
                         const clipFadeOut = fadeOut !== undefined ? fadeOut : (tipo === 'music' ? 2.5 : 0.1);
@@ -249,7 +255,7 @@ export default function App() {
 
     window.addEventListener('message', recibirAudioExterno);
     return () => window.removeEventListener('message', recibirAudioExterno);
-  }, [audioContext, tracks]);
+  }, [audioContext]); // <-- ⚠️ MUY IMPORTANTE: Se quitó 'tracks' de aquí
   
   
   useEffect(() => {
