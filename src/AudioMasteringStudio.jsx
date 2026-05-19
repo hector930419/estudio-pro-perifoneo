@@ -1355,7 +1355,7 @@ export default function App() {
   return (
     <div className="h-screen overflow-y-auto overflow-x-hidden w-full bg-zinc-950 text-zinc-200 font-sans p-4 sm:p-6 selection:bg-emerald-500 selection:text-white flex flex-col gap-6 relative custom-scrollbar">
       
-      {/* --- HEADER ORIGINAL Y BOTONES --- */}
+{/* --- HEADER ORIGINAL Y BOTONES --- */}
       <header className="flex flex-col md:flex-row justify-between items-center border-b border-zinc-800 pb-4 gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg shadow-[0_0_15px_rgba(16,185,129,0.3)]">
@@ -1373,9 +1373,42 @@ export default function App() {
           <button onClick={() => voiceInputRef.current?.click()} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-bold transition-all text-sm">
              <Mic className="w-4 h-4" /> Voz (IA / Mic)
           </button>
-          <button onClick={() => musicInputRef.current?.click()} className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded font-bold transition-all text-sm">
-             <Music className="w-4 h-4" /> Música Fondo
+          
+          <button onClick={() => musicInputRef.current?.click()} className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded font-bold transition-all text-sm" title="Subir música desde tu PC">
+             <Music className="w-4 h-4" /> Mi Música
           </button>
+
+          {/* 🌟 NUEVO: BOTÓN Y MENÚ DE BIBLIOTECA VIP */}
+          <div className="relative">
+              <button onClick={toggleLibrary} className="flex items-center gap-2 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white px-4 py-2 rounded font-bold transition-all text-sm shadow-[0_0_15px_rgba(192,38,211,0.4)] border border-fuchsia-400/50">
+                  ⭐ Pistas VIP
+              </button>
+              
+              {/* EL MENÚ DESPLEGABLE */}
+              {isLibraryOpen && (
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-3 w-72 bg-zinc-900 border border-fuchsia-500/50 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] z-[100] max-h-80 flex flex-col overflow-hidden">
+                      <div className="p-3 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
+                          <span className="text-xs font-black text-fuchsia-400 uppercase tracking-widest">Biblioteca Pro</span>
+                          <button onClick={() => setIsLibraryOpen(false)} className="text-zinc-500 hover:text-white transition-colors bg-zinc-800 hover:bg-zinc-700 rounded-full w-6 h-6 flex items-center justify-center">✕</button>
+                      </div>
+                      <div className="p-2 overflow-y-auto flex-1">
+                          {isLoadingLibrary ? (
+                              <div className="text-center text-zinc-400 text-xs py-6 animate-pulse font-bold">📡 Conectando al servidor...</div>
+                          ) : libraryTracks.length === 0 ? (
+                              <div className="text-center text-zinc-500 text-xs py-6">No hay pistas disponibles.</div>
+                          ) : (
+                              libraryTracks.map((pista, idx) => (
+                                  <div key={idx} onClick={() => loadTrackFromLibrary(pista)} className="p-3 hover:bg-zinc-800 cursor-pointer rounded-lg mb-1 flex items-center justify-between group transition-colors border border-transparent hover:border-zinc-700">
+                                      <span className="text-xs font-bold text-zinc-300 group-hover:text-fuchsia-300 truncate pr-2">{pista.replace('.mp3', '').toUpperCase()}</span>
+                                      <span className="text-[10px] font-black uppercase tracking-wider bg-fuchsia-600/20 text-fuchsia-400 border border-fuchsia-500/30 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">Usar</span>
+                                  </div>
+                              ))
+                          )}
+                      </div>
+                  </div>
+              )}
+          </div>
+
           <button onClick={() => sfxInputRef.current?.click()} className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded font-bold transition-all text-sm">
              <Zap className="w-4 h-4" /> SFX
           </button>
@@ -1402,6 +1435,7 @@ export default function App() {
         </div>
       </header>
 
+      
       {/* --- PANEL DE ESTILOS GLOBALES --- */}
       {clips.length > 0 && (
          <div className="bg-zinc-900 border border-emerald-500/30 rounded-xl p-4 shadow-[0_0_20px_rgba(16,185,129,0.1)] flex items-center justify-between animate-fade-in">
